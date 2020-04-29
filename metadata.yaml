@@ -7,3 +7,6 @@ description: |
   This charm sets up a jenkins-slave in kubernetes.
 series:
   - kubernetes
+provides:
+  slave:
+    interface: jenkins-slave
