@@ -10,3 +10,5 @@ series:
 provides:
   slave:
     interface: jenkins-slave
+deployment:
+    service: omit
