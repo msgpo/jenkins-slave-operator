@@ -42,13 +42,8 @@ def generate_pod_config(config, secured=True):
     return pod_config
 
 
-class SlaveRelationConfigureEvent(EventBase):
-    pass
-
 class JenkinsSlaveCharm(CharmBase):
     state = StoredState()
-
-    on_slave_relation_configured = EventSource(SlaveRelationConfigureEvent)
 
     def __init__(self, framework, parent):
         super().__init__(framework, parent)
@@ -57,7 +52,7 @@ class JenkinsSlaveCharm(CharmBase):
         framework.observe(self.on.config_changed, self.configure_pod)
         framework.observe(self.on.upgrade_charm, self.configure_pod)
         framework.observe(self.on.slave_relation_joined, self)
-        framework.observe(self.on_slave_relation_configured, self.configure_pod)
+        framework.observe(self.on.slave_relation_changed, self)
 
         self.state.set_default(_spec=None)
 
@@ -129,10 +124,17 @@ class JenkinsSlaveCharm(CharmBase):
             self.model.unit.status = BlockedStatus(message)
             is_valid = False
 
+        if not config.get("jenkins_url_master", None) and not self.model.get_relation("slave"):
+            self.model.unit.status = BlockedStatus(
+                "No relation or 'jenkins_master_url' set yet."
+            )
+
         return is_valid
 
     def on_slave_relation_joined(self, event):
         logger.info("Jenkins relation joined")
+
+    def on_slave_relation_changed(self, event):
         noexecutors = os.cpu_count()
         config_labels = self.model.config.get('labels')
 
@@ -150,16 +152,16 @@ class JenkinsSlaveCharm(CharmBase):
         logger.info("Setting up jenkins via slave relation")
         self.model.unit.status = MaintenanceStatus("Configuring jenkins slave")
 
-        if self.model.config.get("master_url"):
-            logger.info("Config option 'master_url' is set. Can't use slave relation.")
+        if self.model.config.get("jenkins_master_url"):
+            logger.info("Config option 'jenkins_master_url' is set. Can't use slave relation.")
             self.model.unit.status = ActiveStatus()
             return
 
         url = rel.data[self.model.unit]["url"]
         if url:
-            self.model.config["master_url"] = url
+            self.model.config["jenkins_master_url"] = url
         else:
-            logger.info("Master hasn't exported its url yet. Continuing with the configured master_url.")
+            logger.info("Master hasn't exported its url yet. Continuing with the configured jenkins_master_url.")
             self.model.unit.status = ActiveStatus()
             return
 
