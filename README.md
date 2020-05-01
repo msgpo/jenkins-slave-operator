@@ -38,12 +38,15 @@ docker run --rm -ti --name jenkins-slave-test \
  -e JENKINS_HOSTNAME="jenkins-slave-test" "${JENKINS_IMAGE}"
 ```
 
-## Testing with microk8s
+## Testing with microk8s and LXD
 
 ### Install prerequisites
 ```
 sudo snap install --channel 2.8/beta juju --classic
+sudo snap install lxd --classic
 sudo snap install microk8s --classic
+sudo ufw allow in on cni0 && sudo ufw allow out on cni0
+sudo ufw default allow routed
 sudo snap install docker
 
 # Start microk8s and enable needed modules
@@ -52,24 +55,49 @@ microk8s.enable registry dns storage
 juju bootstrap microk8s micro
 ```
 
-### Build the jenkins-slave-k8s image
+### Build and run the jenkins-slave-k8s image
 
-You need to have a a jenkins charm deployed locally and have the following variables
-defined. See the "[Testing the docker image](#testing-the-docker-image)" section.
+We consider that you have 2 controllers:
 
-* JENKINS_API_TOKEN: the token for the admin user of your jenkins charm
+* lxd-local, using a LXD cloud
 
-* JENKIN_IP: the ip of your jenkins charm instance
+* micro, using a microk8s cloud
 
-In this repository directory
+Every following command should be run from the current directory
+
+#### Create the models
 ```
 export JENKINS_IMAGE="localhost:32000/jenkins-slave-k8s:devel"
-export MODEL=jenkins-slave-k8s
+export MODEL_K8S=jenkins-slave-k8s
+export MODEL_IAAS=jenkins
+
+juju add-model -c lxd-local --no-switch "${MODEL_IAAS}"
+juju add-model -c micro "${MODEL_K8S}"
+juju model-config logging-config="<root>=DEBUG"
+```
+
+#### Deploy jenkins master
+
+```
+JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}" juju deploy jenkins
+```
+This will take some time, check the status with
+```
+JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}" juju status
+```
+Once ready,
+```
+export JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}"
+export JENKINS_API_TOKEN=$(juju ssh 0 -- sudo cat /var/lib/jenkins/.admin_token)
+export JENKINS_IMAGE="jenkins-slave-k8s:devel"
+export JENKINS_IP=$(juju status --format json jenkins | jq -r '.machines."0"."ip-addresses"[0]')
+unset JUJU_MODEL
+```
+
+```
 make build-image
 docker save "${JENKINS_IMAGE}" > /var/tmp/"${JENKINS_IMAGE##*/}".tar
 microk8s.ctr image import /var/tmp/"${JENKINS_IMAGE##*/}".tar
-juju add-model "${MODEL}"
-juju model-config logging-config="<root>=DEBUG"
 juju deploy . \
   --config "jenkins_agent_name=jenkins-slave-k8s-test" \
   --config "jenkins_api_token=${JENKINS_API_TOKEN:?}" \
@@ -82,4 +110,15 @@ Once everything is deployed, you can check the logs with
 microk8s.kubectl -n "${MODEL}" logs -f --all-containers=true deployment/jenkins-slave
 ```
 
+### Create a relation with the jenkins master
 
+* Offer the relation on the jenkins slave
+```
+juju offer jenkins-slave:slave
+```
+
+* On the IAAS jenkins charm
+```
+juju find-offers micro:admin/jenkins-slave-k8s
+juju add-relation jenkins micro:admin/jenkins-relation.jenkins-slave
+```
