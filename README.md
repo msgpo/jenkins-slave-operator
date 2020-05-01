@@ -67,7 +67,6 @@ Every following command should be run from the current directory
 
 #### Create the models
 ```
-export JENKINS_IMAGE="localhost:32000/jenkins-slave-k8s:devel"
 export MODEL_K8S=jenkins-slave-k8s
 export MODEL_IAAS=jenkins
 
@@ -87,16 +86,15 @@ JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}" juju status
 ```
 Once ready,
 ```
-export JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}"
-export JENKINS_API_TOKEN=$(juju ssh 0 -- sudo cat /var/lib/jenkins/.admin_token)
+export JENKINS_API_TOKEN=$(JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}" juju ssh 0 -- sudo cat /var/lib/jenkins/.admin_token)
 export JENKINS_IMAGE="jenkins-slave-k8s:devel"
-export JENKINS_IP=$(juju status --format json jenkins | jq -r '.machines."0"."ip-addresses"[0]')
-unset JUJU_MODEL
+export JENKINS_IP=$(JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}" juju status --format json jenkins | jq -r '.machines."0"."ip-addresses"[0]')
 ```
 
 ```
+export JENKINS_IMAGE="localhost:32000/jenkins-slave-k8s:devel"
 make build-image
-docker save "${JENKINS_IMAGE}" > /var/tmp/"${JENKINS_IMAGE##*/}".tar
+docker save "${JENKINS_IMAGE?}" > /var/tmp/"${JENKINS_IMAGE##*/}".tar
 microk8s.ctr image import /var/tmp/"${JENKINS_IMAGE##*/}".tar
 juju deploy . \
   --config "jenkins_agent_name=jenkins-slave-k8s-test" \
@@ -107,8 +105,15 @@ juju deploy . \
 
 Once everything is deployed, you can check the logs with
 ```
-microk8s.kubectl -n "${MODEL}" logs -f --all-containers=true deployment/jenkins-slave
+microk8s.kubectl -n "${MODEL_K8S}" logs -f --all-containers=true deployment/jenkins-slave
 ```
+
+#### Upgrade your charm
+
+```
+juju upgrade-charm --path .
+```
+
 
 ### Create a relation with the jenkins master
 
@@ -119,6 +124,6 @@ juju offer jenkins-slave:slave
 
 * On the IAAS jenkins charm
 ```
-juju find-offers micro:admin/jenkins-slave-k8s
-juju add-relation jenkins micro:admin/jenkins-relation.jenkins-slave
+JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}"  juju find-offers micro:admin/${MODEL_K8S}
+JUJU_MODEL="lxd-local:admin/${MODEL_IAAS}"  juju add-relation jenkins micro:admin/${MODEL_K8S}.jenkins-slave
 ```

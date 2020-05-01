@@ -9,6 +9,7 @@ from yaml import safe_load
 
 sys.path.append('lib')  # noqa: E402
 
+import ops
 from ops.charm import CharmBase
 from ops.framework import StoredState, EventSource, EventBase
 from ops.main import main
@@ -123,18 +124,20 @@ class JenkinsSlaveCharm(CharmBase):
             logger.info(message)
             self.model.unit.status = BlockedStatus(message)
             is_valid = False
-
-        if not config.get("jenkins_url_master", None) and not self.model.get_relation("slave"):
-            self.model.unit.status = BlockedStatus(
-                "No relation or 'jenkins_master_url' set yet."
-            )
+        # logger.info("jenkins_url_master : {}".format(config.get("jenkins_url_master")))
+        # # logger.info("relation jenkins-slave : {}".format(str(self.model.get_relation("slave"))))
+        # if not config.get("jenkins_url_master") and not self.model.get_relation("slave"):
+        #     self.model.unit.status = BlockedStatus(
+        #         "No relation or 'jenkins_master_url' set yet."
+        #     )
+        #     is_valid = False
 
         return is_valid
 
-    def on_slave_relation_joined(self, event):
+    def on_slave_relation_joined(self, event: ops.charm.RelationEvent):
         logger.info("Jenkins relation joined")
 
-    def on_slave_relation_changed(self, event):
+    def on_slave_relation_changed(self, event: ops.charm.RelationEvent):
         noexecutors = os.cpu_count()
         config_labels = self.model.config.get('labels')
 
@@ -145,6 +148,7 @@ class JenkinsSlaveCharm(CharmBase):
 
         event.relation.data[self.model.unit]["executors"] = noexecutors
         event.relation.data[self.model.unit]["labels"] = labels
+        event.relation.data[self.model.unit]["slavehost"] = "test"
 
         self.configure_slave_through_relation(event.relation)
 
@@ -152,7 +156,7 @@ class JenkinsSlaveCharm(CharmBase):
         logger.info("Setting up jenkins via slave relation")
         self.model.unit.status = MaintenanceStatus("Configuring jenkins slave")
 
-        if self.model.config.get("jenkins_master_url"):
+        if self.model.config.get("jenkins_master_url", None):
             logger.info("Config option 'jenkins_master_url' is set. Can't use slave relation.")
             self.model.unit.status = ActiveStatus()
             return
@@ -165,7 +169,7 @@ class JenkinsSlaveCharm(CharmBase):
             self.model.unit.status = ActiveStatus()
             return
 
-        self.on.slave_relation_configured.emit()
+        self.on.slave_relation_.emit()
 
 
 if __name__ == '__main__':
