@@ -132,7 +132,7 @@ class JenkinsSlaveCharm(CharmBase):
         return is_valid
 
     def on_slave_relation_joined(self, event):
-        self.log.info("Jenkins relation joined")
+        logger.info("Jenkins relation joined")
         noexecutors = os.cpu_count()
         config_labels = self.model.config.get('labels')
 
@@ -147,11 +147,11 @@ class JenkinsSlaveCharm(CharmBase):
         self.configure_slave_through_relation(event.relation)
 
     def configure_slave_through_relation(self, rel):
-        self.log.info("Setting up jenkins via slave relation")
+        logger.info("Setting up jenkins via slave relation")
         self.model.unit.status = MaintenanceStatus("Configuring jenkins slave")
 
         if self.model.config.get("master_url"):
-            self.log.info("Config option 'master_url' is set. Can't use slave relation.")
+            logger.info("Config option 'master_url' is set. Can't use slave relation.")
             self.model.unit.status = ActiveStatus()
             return
 
@@ -159,7 +159,7 @@ class JenkinsSlaveCharm(CharmBase):
         if url:
             self.model.config["master_url"] = url
         else:
-            self.log.info("Master hasn't exported its url yet. Continuing with the configured master_url.")
+            logger.info("Master hasn't exported its url yet. Continuing with the configured master_url.")
             self.model.unit.status = ActiveStatus()
             return
 
